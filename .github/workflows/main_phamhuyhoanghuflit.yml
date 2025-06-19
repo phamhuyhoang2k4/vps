@@ -7,62 +7,72 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
+  workflow_dispatch: # Cho phép chạy workflow thủ công từ GitHub Actions UI
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      contents: read # Điều này cần thiết cho actions/checkout để đọc mã nguồn
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4 # Tải mã nguồn từ kho lưu trữ
 
       - name: Set up .NET Core
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v4 # Thiết lập môi trường .NET SDK
         with:
-          dotnet-version: '8.0'
+          dotnet-version: '8.0' # Đảm bảo phiên bản này khớp với phiên bản dự án của bạn
+
+      - name: Restore dependencies
+        run: dotnet restore # Khôi phục các gói NuGet cho dự án
 
       - name: Build with dotnet
-        run: dotnet build --configuration Release
+        # **SỬA ĐỔI QUAN TRỌNG:** Chỉ định đường dẫn đến tệp solution (.sln) hoặc project (.csproj) của bạn.
+        # Chọn MỘT trong hai dòng dưới đây và thay thế bằng đường dẫn thực tế.
+        # Ví dụ 1: Nếu tệp solution nằm ở thư mục gốc của repo:
+        # run: dotnet build "TenSolutionCuaBan.sln" --configuration Release --no-restore
+        # Ví dụ 2: Nếu tệp project web của bạn nằm trong thư mục con (phổ biến hơn):
+        run: dotnet build "DuongDanDenProjectWebCuaBan/TenProjectWebCuaBan.csproj" --configuration Release --no-restore
+        # `--no-restore` được thêm vào vì chúng ta đã chạy `dotnet restore` ở bước trên.
 
       - name: dotnet publish
-        run: dotnet publish -c Release -o ${{env.DOTNET_ROOT}}/myapp
+        # **SỬA ĐỔI QUAN TRỌNG:** Chỉ định đường dẫn đến tệp project web mà bạn muốn publish.
+        # Điều này đảm bảo chỉ publish ứng dụng web chính của bạn.
+        run: dotnet publish "DuongDanDenProjectWebCuaBan/TenProjectWebCuaBan.csproj" -c Release -o ${{env.DOTNET_ROOT}}/myapp
 
       - name: Upload artifact for deployment job
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4 # Tải lên thư mục đã publish làm artifact
         with:
-          name: .net-app
-          path: ${{env.DOTNET_ROOT}}/myapp
+          name: .net-app # Tên của artifact
+          path: ${{env.DOTNET_ROOT}}/myapp # Đường dẫn đến thư mục chứa ứng dụng đã publish
 
   deploy:
     runs-on: ubuntu-latest
-    needs: build
+    needs: build # Đảm bảo job 'build' phải hoàn thành thành công trước khi chạy job này
     environment:
-      name: 'Production'
-      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+      name: 'Production' # Tên môi trường triển khai (có thể tùy chỉnh)
+      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }} # URL của ứng dụng sau khi triển khai
     permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
+      id-token: write # Điều này cần thiết để yêu cầu JWT cho xác thực Azure
+      contents: read # Điều này cần thiết cho actions/checkout (mặc dù không checkout lại trong job deploy này)
 
     steps:
       - name: Download artifact from build job
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v4 # Tải xuống artifact từ job 'build'
         with:
-          name: .net-app
-      
+          name: .net-app # Tên của artifact đã tải lên
+
       - name: Login to Azure
-        uses: azure/login@v2
+        uses: azure/login@v2 # Đăng nhập vào Azure sử dụng các secrets được cấu hình
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_EB40D65095264C9F86CAE9E695A8717F }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_CC0A8CC2F0644B579C6DBB07C4B8E205 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_1CD8AE05D4904F99BC5735EACDE151FD }}
 
       - name: Deploy to Azure Web App
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
+        id: deploy-to-webapp # ID cho bước này để lấy output (như webapp-url)
+        uses: azure/webapps-deploy@v3 # Action để triển khai lên Azure Web App
         with:
-          app-name: 'PhamHuyHoangHuflit'
-          slot-name: 'Production'
-          package: .
-          
+          app-name: 'PhamHuyHoangHuflit' # Tên của Web App trên Azure của bạn
+          slot-name: 'Production' # Slot triển khai (mặc định là Production)
+          package: . # Gói triển khai là thư mục hiện tại (nơi artifact được tải xuống)
